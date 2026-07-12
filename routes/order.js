@@ -84,7 +84,7 @@ router.post('/', protect, async (req, res) => {
 
     // Emit event for real-time update
     if (req.io) {
-      req.io.emit('new_order', createdOrder);
+      req.io.to('delivery_boys').emit('new_order', createdOrder);
     }
 
     res.status(201).json(createdOrder);
@@ -102,8 +102,11 @@ router.get('/:id', protect, async (req, res) => {
 
     if (order) {
       const isCustomer = order.customer._id.toString() === req.user._id.toString();
-      const isDeliveryBoy = order.deliveryBoy && order.deliveryBoy._id.toString() === req.user._id.toString();
-      if (!isCustomer && !isDeliveryBoy && req.user.role !== 'Admin' && req.user.role !== 'Delivery Boy') {
+      const isAssignedDeliveryBoy = order.deliveryBoy && order.deliveryBoy._id.toString() === req.user._id.toString();
+      const isUnassigned = order.status === 'Placed' && !order.deliveryBoy;
+      const canDeliveryBoyView = req.user.role === 'Delivery Boy' && (isUnassigned || isAssignedDeliveryBoy);
+
+      if (!isCustomer && !canDeliveryBoyView && req.user.role !== 'Admin') {
         return res.status(403).json({ message: 'Not authorized to view this order' });
       }
       res.json(order);
@@ -166,6 +169,21 @@ router.put('/:id/status', protect, async (req, res) => {
       if (req.user.role !== 'Delivery Boy' && req.user.role !== 'Admin') {
         return res.status(403).json({ message: 'Not authorized to update status' });
       }
+
+      // Check if delivery boy is trying to modify an order they do not own
+      if (req.user.role === 'Delivery Boy') {
+        if (status === 'Preparing') {
+          if (order.deliveryBoy && order.deliveryBoy.toString() !== req.user._id.toString()) {
+             return res.status(403).json({ message: 'Order already accepted by another delivery partner' });
+          }
+        } else {
+          // If updating to any other status, ensure this delivery boy owns it
+          if (!order.deliveryBoy || order.deliveryBoy.toString() !== req.user._id.toString()) {
+             return res.status(403).json({ message: 'Not authorized to update this order' });
+          }
+        }
+      }
+
       order.status = status;
       order.timeline.push({ status });
 

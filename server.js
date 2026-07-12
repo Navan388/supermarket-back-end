@@ -40,6 +40,10 @@ app.get('/', (req, res) => {
 // Create HTTP server
 const server = http.createServer(app);
 
+const jwt = require('jsonwebtoken');
+const User = require('./models/User');
+const Order = require('./models/Order');
+
 // Setup Socket.IO
 const io = new Server(server, {
   cors: {
@@ -48,18 +52,60 @@ const io = new Server(server, {
   },
 });
 
+io.use(async (socket, next) => {
+  try {
+    const token = socket.handshake.auth.token;
+    if (!token) {
+      return next(new Error('Authentication error'));
+    }
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id).select('-password');
+    if (!user) {
+      return next(new Error('User not found'));
+    }
+    socket.user = user;
+    next();
+  } catch (err) {
+    next(new Error('Authentication error'));
+  }
+});
+
 io.on('connection', (socket) => {
-  console.log(`User connected: ${socket.id}`);
+  console.log(`User connected: ${socket.id} (${socket.user.role})`);
   
-  // Real-time tracking and notifications can be handled here
-  socket.on('join_order_room', (orderId) => {
-    socket.join(orderId);
-    console.log(`User joined order room: ${orderId}`);
+  if (socket.user.role === 'Delivery Boy') {
+    socket.join('delivery_boys');
+  }
+
+  socket.on('join_order_room', async (orderId) => {
+    try {
+      const order = await Order.findById(orderId);
+      if (!order) return;
+      
+      const isCustomer = order.customer.toString() === socket.user._id.toString();
+      const isAssignedDeliveryBoy = order.deliveryBoy && order.deliveryBoy.toString() === socket.user._id.toString();
+      
+      if (isCustomer || isAssignedDeliveryBoy || socket.user.role === 'Admin') {
+        socket.join(orderId);
+        console.log(`User joined order room: ${orderId}`);
+      }
+    } catch (error) {
+      console.log('Error joining order room', error);
+    }
   });
 
-  socket.on('update_location', (data) => {
+  socket.on('update_location', async (data) => {
     // data = { orderId, latitude, longitude }
-    io.to(data.orderId).emit('location_update', data);
+    if (socket.user.role === 'Delivery Boy') {
+      try {
+        const order = await Order.findById(data.orderId);
+        if (order && order.deliveryBoy && order.deliveryBoy.toString() === socket.user._id.toString()) {
+          io.to(data.orderId).emit('location_update', data);
+        }
+      } catch (error) {
+        console.log('Error updating location', error);
+      }
+    }
   });
 
   socket.on('disconnect', () => {
