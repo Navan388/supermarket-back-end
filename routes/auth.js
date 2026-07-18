@@ -147,6 +147,27 @@ router.delete('/profile', async (req, res) => {
   }
 });
 
+// Update Push Token
+router.put('/push-token', async (req, res) => {
+  try {
+    const userId = req.headers.authorization?.split(' ')[1];
+    if (!userId) return res.status(401).json({ message: 'Not authorized' });
+
+    const decoded = jwt.verify(userId, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id);
+
+    if (user) {
+      user.expoPushToken = req.body.token;
+      await user.save();
+      res.json({ message: 'Push token updated' });
+    } else {
+      res.status(404).json({ message: 'User not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
     expiresIn: '30d',

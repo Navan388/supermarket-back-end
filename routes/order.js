@@ -4,6 +4,7 @@ const Product = require('../models/Product');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
 const { protect } = require('../middleware/authMiddleware');
+const { sendPushNotification } = require('../utils/pushNotifications');
 
 const router = express.Router();
 
@@ -69,6 +70,11 @@ router.post('/', protect, async (req, res) => {
       req.io.emit(`notification_${customerId}`, customerNotification);
     }
 
+    const customerUser = await User.findById(customerId);
+    if (customerUser && customerUser.expoPushToken) {
+      sendPushNotification(customerUser.expoPushToken, customerNotification.message);
+    }
+
     // Create Notification for all Delivery Boys
     const deliveryBoys = await User.find({ role: 'Delivery Boy' });
     for (const dboy of deliveryBoys) {
@@ -79,6 +85,9 @@ router.post('/', protect, async (req, res) => {
       await dbNotification.save();
       if (req.io) {
         req.io.emit(`notification_${dboy._id}`, dbNotification);
+      }
+      if (dboy.expoPushToken) {
+        sendPushNotification(dboy.expoPushToken, dbNotification.message);
       }
     }
 
@@ -214,6 +223,11 @@ router.put('/:id/status', protect, async (req, res) => {
         if (req.io) {
           req.io.emit(`notification_${order.customer}`, customerNotification);
         }
+
+        const customerUser = await User.findById(order.customer);
+        if (customerUser && customerUser.expoPushToken) {
+          sendPushNotification(customerUser.expoPushToken, notificationMsg);
+        }
       }
 
       if (req.io) {
@@ -265,6 +279,11 @@ router.put('/:id/cancel', protect, async (req, res) => {
       if (req.io) {
         req.io.emit(`notification_${order.customer}`, customerNotification);
         req.io.to(updatedOrder._id.toString()).emit('order_status_update', updatedOrder);
+      }
+
+      const customerUser = await User.findById(order.customer);
+      if (customerUser && customerUser.expoPushToken) {
+        sendPushNotification(customerUser.expoPushToken, customerNotification.message);
       }
 
       res.json(updatedOrder);

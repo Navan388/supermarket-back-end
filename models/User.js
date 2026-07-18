@@ -32,6 +32,10 @@ const userSchema = mongoose.Schema(
       type: String,
       default: 'https://via.placeholder.com/150',
     },
+    expoPushToken: {
+      type: String,
+      default: null,
+    },
     // Customer specific
     reviewsCount: {
       type: Number,
