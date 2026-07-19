@@ -1,6 +1,8 @@
 const express = require('express');
 const Notification = require('../models/Notification');
+const User = require('../models/User');
 const { protect } = require('../middleware/authMiddleware');
+const { sendPushNotification } = require('../utils/pushNotifications');
 
 const router = express.Router();
 
@@ -33,6 +35,11 @@ router.post('/', protect, async (req, res) => {
 
     if (req.io) {
       req.io.emit(`notification_${userId}`, createdNotification);
+    }
+
+    const user = await User.findById(userId);
+    if (user && user.expoPushToken) {
+      sendPushNotification(user.expoPushToken, message);
     }
 
     res.status(201).json(createdNotification);
