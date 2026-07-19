@@ -14,6 +14,7 @@ const sendPushNotification = async (pushToken, message) => {
       sound: 'default',
       priority: 'high',
       channelId: 'default',
+      badge: 1,
       body: message,
       data: { withSome: 'data' },
     },
